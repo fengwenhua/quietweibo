@@ -96,8 +96,10 @@
     <string name="about_compat_title">兼容版本</string>
     <string name="about_compat_summary">已测试 %1$d 个微博版本，点击查看</string>
     <string name="about_compat_dialog_title">已测试兼容的微博版本</string>
-    <string name="about_compat_item">%1$s（versionCode %2$d）%3$s</string>
+    <string name="about_compat_page_summary">共 %1$d 个，按从新到旧排列</string>
+    <string name="about_compat_version_summary">versionCode %1$d%2$s</string>
     <string name="about_compat_latest"> · 最新</string>
+    <string name="about_compat_back">返回关于页</string>
     <string name="about_source_title">源码</string>
     <string name="about_source_value">%1$s</string>
     <string name="about_reference_title">参考项目</string>

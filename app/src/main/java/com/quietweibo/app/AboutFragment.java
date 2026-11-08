@@ -6,7 +6,6 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.widget.Toast;
 
-import androidx.appcompat.app.AlertDialog;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.PreferenceScreen;
@@ -14,7 +13,10 @@ import androidx.preference.PreferenceScreen;
 import java.util.List;
 
 /**
- * 关于页：模块版本、目标应用、免责声明、许可证。
+ * 关于页：模块版本、目标应用、兼容版本、免责声明、许可证。
+ *
+ * <p>兼容版本使用嵌套 PreferenceScreen 展示，而不是对话框：版本越来越多时
+ * 页面可以自然滚动，并且系统返回键会回到关于页主页。
  */
 public class AboutFragment extends PreferenceFragmentCompat {
 
@@ -24,9 +26,13 @@ public class AboutFragment extends PreferenceFragmentCompat {
     private static final String LICENSE_URL =
             "https://github.com/fengwenhua/quietweibo/blob/main/LICENSE";
 
+    private PreferenceScreen mMainScreen;
+    private boolean mShowingVersions;
+
     @Override
     public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
         PreferenceScreen screen = getPreferenceManager().createPreferenceScreen(requireContext());
+        mMainScreen = screen;
         setPreferenceScreen(screen);
 
         Preference module = info(R.string.app_name,
@@ -83,23 +89,59 @@ public class AboutFragment extends PreferenceFragmentCompat {
     private void showTestedVersions() {
         List<VersionGate.TestedVersion> versions = VersionGate.testedVersions();
         String latest = VersionGate.latestTestedVersion();
-        String[] items = new String[versions.size()];
-        for (int i = 0; i < versions.size(); i++) {
-            VersionGate.TestedVersion version = versions.get(i);
-            items[i] = getString(R.string.about_compat_item, version.name,
+        PreferenceScreen list = getPreferenceManager().createPreferenceScreen(requireContext());
+
+        Preference back = info(R.string.about_compat_back, null);
+        back.setOnPreferenceClickListener(p -> {
+            showMainScreen();
+            return true;
+        });
+        list.addPreference(back);
+
+        Preference header = info(R.string.about_compat_dialog_title,
+                getString(R.string.about_compat_page_summary, versions.size()));
+        header.setSelectable(false);
+        list.addPreference(header);
+
+        for (VersionGate.TestedVersion version : versions) {
+            Preference row = new Preference(requireContext());
+            row.setTitle(version.name);
+            row.setSummary(getString(R.string.about_compat_version_summary,
                     version.versionCode,
-                    latest.equals(version.name) ? getString(R.string.about_compat_latest) : "");
+                    latest.equals(version.name)
+                            ? getString(R.string.about_compat_latest) : ""));
+            row.setSelectable(false);
+            list.addPreference(row);
         }
-        new AlertDialog.Builder(requireContext())
-                .setTitle(R.string.about_compat_dialog_title)
-                .setItems(items, null)
-                .setPositiveButton(android.R.string.ok, null)
-                .show();
+
+        setPreferenceScreen(list);
+        mShowingVersions = true;
+    }
+
+    private void showMainScreen() {
+        if (mMainScreen != null) {
+            setPreferenceScreen(mMainScreen);
+        }
+        mShowingVersions = false;
+    }
+
+    /**
+     * 返回键先交给关于页：兼容版本列表显示时回到关于主页。
+     * 由 MainActivity 的返回回调调用，避免和 Activity 的 tab 返回逻辑抢优先级。
+     */
+    public boolean handleBack() {
+        if (!mShowingVersions) {
+            return false;
+        }
+        showMainScreen();
+        return true;
     }
 
     private Preference info(int titleRes, CharSequence summary) {
         Preference p = new Preference(requireContext());
-        p.setTitle(titleRes);
+        if (titleRes != 0) {
+            p.setTitle(titleRes);
+        }
         p.setSummary(summary);
         return p;
     }

@@ -89,6 +89,10 @@ public class MainActivity extends AppCompatActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
+                if (mCurrentFragment instanceof AboutFragment
+                        && ((AboutFragment) mCurrentFragment).handleBack()) {
+                    return;
+                }
                 if (mSelectedTab != R.id.nav_settings) {
                     switchTab(R.id.nav_settings);
                     mBottomNav.setSelectedItemId(R.id.nav_settings);
