@@ -219,6 +219,24 @@ app/src/main/java/com/quietweibo/app/
 
 当前本地结果：**79 个 JVM 单测通过，`assembleDebug` 成功**。
 
+### CI 与正式发布
+
+- `.github/workflows/build.yml`：push/PR 自动跑单测、Lint、debug 构建，并上传 debug APK。
+- `.github/workflows/release.yml`：手动输入已提交的 `v版本` tag；build job 只产 unsigned APK，
+  sign job 在受保护的 `release` 环境里签名，publish job 回读四个附件校验后发布。
+- `.github/workflows/bootstrap-signing.yml`：一次性在 GitHub Runner 生成 release keystore 与
+  manifest 密钥，私钥直接写入 `release` 环境 Secret，不落本地、不进 artifact。
+- 正式 Release 四附件：`QuietWeibo-{version}.apk`、`.apk.sha256`、`release-manifest.json`、
+  `release-manifest.sig`；主仓与 `Xposed-Modules-Repo/io.github.fengwenhua.quietweibo` 使用同一组附件。
+
+首次初始化签名后，`release-trust.properties` 与 `.github/trust/release-certificate.pem`
+必须提交；之后每次发布只需更新 `version.properties`、发布说明和 tag。
+
+GitHub Releases：
+<https://github.com/fengwenhua/quietweibo/releases>
+Xposed 模块仓：
+<https://github.com/Xposed-Modules-Repo/io.github.fengwenhua.quietweibo>
+
 ### 真机验证（2026-11-08）
 
 设备：OPPO PKH110 / Android 16 / LSPosed API 102；目标微博 16.10.3。

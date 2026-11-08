@@ -22,25 +22,40 @@ ROOT = Path(__file__).resolve().parents[1]
 PREFIX = "https://github.com/Xposed-Modules-Repo/io.github.fengwenhua.quietweibo"
 
 
+def expected_tag():
+    stamp = dict(
+        line.split("=", 1)
+        for line in (ROOT / "version.properties").read_text().splitlines()
+        if "=" in line and not line.lstrip().startswith("#")
+    )
+    return stamp["versionCode"] + "-" + stamp["versionName"]
+
+
 def browser(javascript):
     script = '''tell application "Google Chrome"
+set matches to {}
 repeat with w in windows
 repeat with t in tabs of w
 if URL of t starts with REPOSITORY then
-return execute t javascript EXPRESSION
+set selectedTag to execute t javascript "document.getElementById('release_tag_name')?.value || ''"
+if selectedTag is EXPECTED then set end of matches to t
 end if
 end repeat
 end repeat
-return "MODULE_TAB_MISSING"
+if (count of matches) is 0 then return "MODULE_EDITOR_MISSING"
+if (count of matches) is greater than 1 then return "MODULE_EDITOR_AMBIGUOUS"
+set targetTab to item 1 of matches
+return execute targetTab javascript EXPRESSION
 end tell'''.replace("REPOSITORY", json.dumps(PREFIX)).replace(
+        "EXPECTED", json.dumps(expected_tag())).replace(
         "EXPRESSION", json.dumps(javascript))
     result = subprocess.run(["osascript", "-"], input=script, capture_output=True,
                             text=True, timeout=30)
     if result.returncode:
         raise RuntimeError("Chrome automation unavailable: " + result.stderr[:300])
     value = result.stdout.strip()
-    if value == "MODULE_TAB_MISSING":
-        raise RuntimeError("Open this repository's release editor in Chrome first")
+    if value in ("MODULE_EDITOR_MISSING", "MODULE_EDITOR_AMBIGUOUS"):
+        raise RuntimeError(value + ": open the release editor for " + expected_tag())
     return value
 
 
