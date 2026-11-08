@@ -1,0 +1,178 @@
+package com.quietweibo.app;
+
+import android.util.Log;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
+
+/**
+ * 目标进程内的诊断状态：每个功能的注册标签、命中次数、跳过原因。
+ *
+ * 真正带细节的日志由 HookKit 打进 logcat（tag QuietWeibo）；这里只存计数快照，
+ * 由 hooks 包的 Report 定期回传给模块 App 的 StatusProvider，供诊断页展示。
+ *
+ * 线程安全：命中可能来自任意线程（含 binder 线程），全部用并发容器。
+ */
+public final class HookState {
+
+    private static final String TAG = "QuietWeibo";
+
+    private static final ConcurrentMap<Feature, State> STATES = new ConcurrentHashMap<>();
+
+    private HookState() {
+    }
+
+    private static final class State {
+        final Set<String> labels = ConcurrentHashMap.newKeySet();
+        final Set<String> criticalSkips = ConcurrentHashMap.newKeySet();
+        final AtomicLong hits = new AtomicLong();
+        volatile String skip;
+
+        void markSkip(String reason) {
+            if (reason != null) {
+                skip = reason;
+            }
+        }
+    }
+
+    private static State state(Feature f) {
+        State s = STATES.get(f);
+        if (s == null) {
+            s = new State();
+            State prev = STATES.putIfAbsent(f, s);
+            if (prev != null) {
+                s = prev;
+            }
+        }
+        return s;
+    }
+
+    /** 清空进程内全部诊断状态；单测隔离与会话重置时使用。 */
+    public static void resetAll() {
+        STATES.clear();
+    }
+
+    /**
+     * 功能开始安装。创建空 State，确保「已启用但安装阶段完全没有 touch」的功能
+     * 也会进入快照并发送空 reg/skip，从而清掉上一会话的旧 skip。
+     */
+    public static void enable(Feature f) {
+        state(f);
+        Log.i(TAG, f.id + " enabled");
+    }
+
+    public static void installed(Feature f, String label) {
+        state(f).labels.add(label);
+    }
+
+    /**
+     * 可选锚点缺失：只记录 skip 供诊断页展示，不计入失败横幅。
+     * 方法改名/签名变化都属于这一类。
+     */
+    public static void markNotFound(Feature f, String reason) {
+        state(f).markSkip(reason);
+    }
+
+    /**
+     * 主锚点缺失（例如整个类找不到）：除记录 skip 外，再打上 critical 标记，
+     * 让 ReportProtocol.featureFailed 把该功能计入失败横幅。
+     */
+    public static void markNotFoundCritical(Feature f, String reason) {
+        State s = state(f);
+        s.markSkip(reason);
+        if (reason != null) {
+            s.criticalSkips.add(reason);
+        }
+    }
+
+    /** 本会话是否出现过主锚点缺失。 */
+    public static boolean hasCriticalSkip(Feature f) {
+        State s = STATES.get(f);
+        return s != null && !s.criticalSkips.isEmpty();
+    }
+
+    /** 命中计数 +1，返回累加后的次数。 */
+    public static long hit(Feature f) {
+        return state(f).hits.incrementAndGet();
+    }
+
+    /** 安装阶段的补充说明：只写日志，不进入诊断页。 */
+    public static void note(Feature f, String text) {
+        if (text != null) {
+            Log.i(TAG, f.id + " " + text);
+        }
+    }
+
+    // ---- 快照（供 Report / 挂载统计回传） ----
+
+    public static List<Feature> touched() {
+        return new ArrayList<>(STATES.keySet());
+    }
+
+    public static List<String> labels(Feature f) {
+        State s = STATES.get(f);
+        if (s == null) {
+            return Collections.emptyList();
+        }
+        List<String> out = new ArrayList<>(s.labels);
+        Collections.sort(out);
+        return out;
+    }
+
+    public static long hitCount(Feature f) {
+        State s = STATES.get(f);
+        return s == null ? 0L : s.hits.get();
+    }
+
+    public static String skipReason(Feature f) {
+        State s = STATES.get(f);
+        return s == null ? null : s.skip;
+    }
+
+    /**
+     * 挂载统计快照。计数按「功能」去重：
+     * ok = 至少注册成功一个挂载点的功能数，miss/bad = 有 skip 的功能数。
+     */
+    public static final class Snapshot {
+        public final int ok;
+        public final int miss;
+        public final List<String> missed;
+        public final int features;
+        public final int bad;
+
+        Snapshot(int ok, int miss, List<String> missed, int features, int bad) {
+            this.ok = ok;
+            this.miss = miss;
+            this.missed = missed;
+            this.features = features;
+            this.bad = bad;
+        }
+    }
+
+    public static Snapshot snapshot() {
+        int ok = 0;
+        int bad = 0;
+        List<String> missed = new ArrayList<>();
+        synchronized (STATES) {
+            for (Feature f : STATES.keySet()) {
+                boolean hasLabel = !labels(f).isEmpty();
+                boolean hasSkip = skipReason(f) != null;
+                if (hasLabel) {
+                    ok++;
+                }
+                if (hasSkip) {
+                    bad++;
+                    missed.add(f.id);
+                }
+            }
+            Collections.sort(missed);
+            return new Snapshot(ok, bad, missed, STATES.size(), bad);
+        }
+    }
+
+}

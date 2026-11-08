@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  自适应图标前景：微博“眼睛” + 斜杠 = 去广告。
+  眼睛用白色描边，斜杠用深色，在橙黄渐变背景上小尺寸也能看清。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M54,34 C42,34 31,42 24,54 C31,66 42,74 54,74 C66,74 77,66 84,54 C77,42 66,34 54,34 Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="6.5" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,44 A10,10 0 1 1 53.99,44 Z" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M31,79 L77,29"
+        android:strokeColor="#FF1C1C1C"
+        android:strokeLineCap="round"
+        android:strokeWidth="8.5" />
+</vector>

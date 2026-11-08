@@ -1,0 +1,120 @@
+package com.quietweibo.app.hooks;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+
+import com.quietweibo.app.Feature;
+import com.quietweibo.app.HookState;
+import com.quietweibo.app.ReportProtocol;
+
+import org.junit.Before;
+import org.junit.Test;
+
+import java.util.Map;
+
+/**
+ * Report.snapshot 的键完整性：reg/skip 对每个 touched Feature 都必须存在（可为空串），
+ * hit 只在 >0 时出现。回归「旧会话 skip 残留导致横幅永久误报」的问题。
+ *
+ * HookState 是进程级静态状态：每个用例使用不同 Feature，避免测试之间互相污染。
+ */
+public class ReportTest {
+
+    @Before
+    public void resetState() {
+        HookState.resetAll();
+    }
+
+    @Test
+    public void snapshotSendsEmptySkipForRegisteredFeatureWithoutSkip() {
+        Feature f = Feature.AD_PRELOAD;
+        HookState.installed(f, "alpha");
+
+        Map<String, String> snap = Report.snapshot();
+
+        assertEquals("alpha", snap.get(ReportProtocol.PREFIX_REG + f.key));
+        assertTrue("无 skip 也必须发送 skip 键", snap.containsKey(ReportProtocol.PREFIX_SKIP + f.key));
+        assertEquals("空串才能覆盖旧 skip", "", snap.get(ReportProtocol.PREFIX_SKIP + f.key));
+        assertFalse("hit 为 0 时不发送，避免多余写入", snap.containsKey(ReportProtocol.PREFIX_HIT + f.key));
+    }
+
+    @Test
+    public void snapshotSendsEmptyRegForSkipOnlyFeature() {
+        Feature f = Feature.SEARCH_AD;
+        HookState.markNotFound(f, "类未找到 x");
+
+        Map<String, String> snap = Report.snapshot();
+
+        assertTrue("未注册也必须发送 reg 键", snap.containsKey(ReportProtocol.PREFIX_REG + f.key));
+        assertEquals("空串才能覆盖旧注册标签", "", snap.get(ReportProtocol.PREFIX_REG + f.key));
+        assertEquals("类未找到 x", snap.get(ReportProtocol.PREFIX_SKIP + f.key));
+    }
+
+    @Test
+    public void snapshotIncludesEnabledButNotInstalled() {
+        Feature f = Feature.SHAKE_AD;
+        HookState.enable(f);
+
+        Map<String, String> snap = Report.snapshot();
+
+        assertEquals("enable 后必须发送空 reg，清掉旧会话标签", "",
+                snap.get(ReportProtocol.PREFIX_REG + f.key));
+        assertEquals("enable 后必须发送空 skip，清掉旧会话 skip", "",
+                snap.get(ReportProtocol.PREFIX_SKIP + f.key));
+    }
+
+    @Test
+    public void snapshotKeepsPositiveHit() {
+        Feature f = Feature.FLOAT_AD;
+        HookState.installed(f, "beta");
+        HookState.hit(f);
+        HookState.hit(f);
+
+        Map<String, String> snap = Report.snapshot();
+
+        assertEquals("2", snap.get(ReportProtocol.PREFIX_HIT + f.key));
+        assertTrue(snap.containsKey(ReportProtocol.PREFIX_SKIP + f.key));
+        assertEquals("", snap.get(ReportProtocol.PREFIX_SKIP + f.key));
+    }
+
+    @Test
+    public void snapshotCarriesStableSessionAndUpdatedAt() {
+        Map<String, String> first = Report.snapshot();
+        String session = first.get(ReportProtocol.KEY_META_SESSION);
+        assertNotNull("必须回传 meta.session", session);
+        assertTrue("session 必须是可比较的启动时刻", Long.parseLong(session) > 0L);
+        assertTrue("必须回传 meta.updated_at",
+                Long.parseLong(first.get(ReportProtocol.KEY_META_UPDATED_AT)) > 0L);
+
+        Map<String, String> second = Report.snapshot();
+        assertEquals("同一进程会话标识必须稳定", session,
+                second.get(ReportProtocol.KEY_META_SESSION));
+    }
+
+    @Test
+    public void snapshotMarksCriticalClassSkip() {
+        Feature f = Feature.EXIT_AD;
+        HookState.markNotFoundCritical(f, "类未找到 x");
+
+        Map<String, String> snap = Report.snapshot();
+
+        assertEquals("1", snap.get(ReportProtocol.PREFIX_CRIT + f.key));
+        assertEquals("类未找到 x", snap.get(ReportProtocol.PREFIX_SKIP + f.key));
+    }
+
+    @Test
+    public void snapshotKeepsOptionalSkipNonCritical() {
+        Feature f = Feature.DISCOVER_AD;
+        HookState.installed(f, "alpha");
+        HookState.markNotFound(f, "方法未找到 x");
+
+        Map<String, String> snap = Report.snapshot();
+
+        assertEquals("alpha", snap.get(ReportProtocol.PREFIX_REG + f.key));
+        assertEquals("方法未找到 x", snap.get(ReportProtocol.PREFIX_SKIP + f.key));
+        assertEquals("方法级 skip 不能标 critical", "",
+                snap.get(ReportProtocol.PREFIX_CRIT + f.key));
+    }
+}

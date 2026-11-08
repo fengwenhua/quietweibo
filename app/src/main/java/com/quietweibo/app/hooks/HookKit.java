@@ -1,0 +1,364 @@
+package com.quietweibo.app.hooks;
+
+import android.util.Log;
+
+import androidx.annotation.Nullable;
+
+import com.quietweibo.app.Feature;
+import com.quietweibo.app.HookState;
+
+import java.lang.reflect.Method;
+
+import io.github.libxposed.api.XposedInterface;
+import io.github.libxposed.api.XposedModule;
+
+/**
+ * 约束：
+ * 1) 定位/hook 失败只记日志并返回 null/false，绝不向外抛（HookFailedError 继承 Error，框架不兜底）。
+ * 2) 每个 intercept 体整段包在 try/catch(Throwable) 内，catch 后记日志并 proceed 原逻辑。
+ * 3) 命中日志固定 "<功能id> hit ..."，tag 固定 QuietWeibo。
+ */
+final class HookKit {
+
+    static final String TAG = "QuietWeibo";
+
+    private HookKit() {
+    }
+
+    static void info(XposedModule module, String msg) {
+        module.log(Log.INFO, TAG, msg);
+    }
+
+    static void warn(XposedModule module, String msg) {
+        module.log(Log.WARN, TAG, msg);
+    }
+
+    static void error(XposedModule module, String msg, Throwable t) {
+        module.log(Log.ERROR, TAG, msg, t);
+    }
+
+    /**
+     * 类级锚点缺失属于主锚点失效：记 critical，让失败横幅能反映版本不兼容。
+     * 方法级锚点（findMethod/findByShape 等）只记可选 skip，不影响横幅。
+     */
+    @Nullable
+    static Class<?> findClass(XposedModule module, Feature f, ClassLoader cl, String name) {
+        try {
+            return Class.forName(name, false, cl);
+        } catch (Throwable t) {
+            warn(module, f.id + " skip: class not found " + name);
+            HookState.markNotFoundCritical(f, "类未找到 " + name);
+            return null;
+        }
+    }
+
+    /**
+     * 可选类：存在就挂，不存在只记普通 skip，不触发失败横幅。
+     * 用于同一广告位的多种实现（如 lonely/mul banner）里只要求命中一个的场景。
+     */
+    @Nullable
+    static Class<?> findClassOptional(XposedModule module, Feature f, ClassLoader cl, String name) {
+        try {
+            return Class.forName(name, false, cl);
+        } catch (Throwable t) {
+            warn(module, f.id + " skip: optional class not found " + name);
+            HookState.markNotFound(f, "类未找到 " + name);
+            return null;
+        }
+    }
+
+    @Nullable
+    static Method findMethod(XposedModule module, Feature f, @Nullable Class<?> cls, String name,
+                             Class<?>... params) {
+        Method m = findMethodQuiet(cls, name, params);
+        if (m == null) {
+            warn(module, f.id + " skip: method not found "
+                    + (cls == null ? "?" : cls.getName()) + "#" + name);
+            HookState.markNotFound(f, "方法未找到 " + name);
+        }
+        return m;
+    }
+
+    /**
+     * 按名字找方法，不看参数。getDeclaredMethod 不给参数类型时只匹配无参方法，
+     * 有参入口必须走这里；同名重载不唯一时返回 null，不做猜测。
+     */
+    @Nullable
+    static Method findMethod(XposedModule module, Feature f, @Nullable Class<?> cls, String name) {
+        Method m = findByNameQuiet(cls, name);
+        if (m == null) {
+            warn(module, f.id + " skip: method not found "
+                    + (cls == null ? "?" : cls.getName()) + "#" + name);
+            HookState.markNotFound(f, "方法未找到 " + name);
+        }
+        return m;
+    }
+
+    @Nullable
+    static Method findByNameQuiet(@Nullable Class<?> cls, String name) {
+        if (cls == null) {
+            return null;
+        }
+        try {
+            Method found = null;
+            for (Method m : cls.getDeclaredMethods()) {
+                if (!name.equals(m.getName())) {
+                    continue;
+                }
+                if (found != null) {
+                    return null;
+                }
+                found = m;
+            }
+            return found;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * 按「名字 + 前导参数类型」定位方法：只校验最前面的若干个参数类型，后面的不看。
+     * 用于参数后半段是混淆类型（无法在编译期写出 Class 字面量）的场景，
+     * 例如 ui.a#d(WeakReference, SplashAd)、SplashAdActivity$a#a(Context, SplashAd)。
+     * 同名同形状不唯一时返回 null，不做猜测。
+     */
+    @Nullable
+    static Method findByShape(@Nullable Class<?> cls, String name, Class<?>... leading) {
+        if (cls == null) {
+            return null;
+        }
+        try {
+            Method found = null;
+            for (Method m : cls.getDeclaredMethods()) {
+                if (!name.equals(m.getName())) {
+                    continue;
+                }
+                Class<?>[] p = m.getParameterTypes();
+                if (p.length < leading.length) {
+                    continue;
+                }
+                boolean ok = true;
+                for (int i = 0; i < leading.length; i++) {
+                    if (p[i] != leading[i]) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (!ok) {
+                    continue;
+                }
+                if (found != null) {
+                    return null;
+                }
+                found = m;
+            }
+            return found;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * 按「名字 + 参数个数」定位方法。参数类型全是混淆类型时用这个，
+     * 比 findByShape 更宽松。同名同参数个数不唯一时返回 null，不做猜测。
+     */
+    @Nullable
+    static Method findByNameAndArity(@Nullable Class<?> cls, String name, int arity) {
+        if (cls == null) {
+            return null;
+        }
+        try {
+            Method found = null;
+            for (Method m : cls.getDeclaredMethods()) {
+                if (!name.equals(m.getName()) || m.getParameterTypes().length != arity) {
+                    continue;
+                }
+                if (found != null) {
+                    return null;
+                }
+                found = m;
+            }
+            return found;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    @Nullable
+    static Method findMethodQuiet(@Nullable Class<?> cls, String name, Class<?>... params) {
+        if (cls == null) {
+            return null;
+        }
+        try {
+            return cls.getDeclaredMethod(name, params);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 带 module/Feature 的 findByNameAndArity：未找到时统一记 miss。 */
+    @Nullable
+    static Method findByNameAndArity(XposedModule module, Feature f, @Nullable Class<?> cls,
+                                     String name, int arity) {
+        Method m = findByNameAndArity(cls, name, arity);
+        if (m == null) {
+            warn(module, f.id + " skip: method not found "
+                    + (cls == null ? "?" : cls.getName()) + "#" + name + "/" + arity + " 未找到");
+            HookState.markNotFound(f, "方法未找到 " + name);
+        }
+        return m;
+    }
+
+    /** 带 module/Feature 的 findByShape：未找到时统一记 miss。 */
+    @Nullable
+    static Method findByShape(XposedModule module, Feature f, @Nullable Class<?> cls,
+                              String name, Class<?>... leading) {
+        Method m = findByShape(cls, name, leading);
+        if (m == null) {
+            warn(module, f.id + " skip: method not found "
+                    + (cls == null ? "?" : cls.getName()) + "#" + name + " 未找到");
+            HookState.markNotFound(f, "方法未找到 " + name);
+        }
+        return m;
+    }
+
+    /** 带 module/Feature 的 findMethodQuiet：未找到时统一记 miss。 */
+    @Nullable
+    static Method findMethodQuiet(XposedModule module, Feature f, @Nullable Class<?> cls,
+                                  String name, Class<?>... params) {
+        Method m = findMethodQuiet(cls, name, params);
+        if (m == null) {
+            warn(module, f.id + " skip: method not found "
+                    + (cls == null ? "?" : cls.getName()) + "#" + name + " 未找到");
+            HookState.markNotFound(f, "方法未找到 " + name);
+        }
+        return m;
+    }
+
+    /** 沿父类链逐层 getDeclaredMethod（不查接口），未找到时统一记 miss。 */
+    @Nullable
+    static Method findMethodInHierarchy(XposedModule module, Feature f, @Nullable Class<?> cls,
+                                        String name, Class<?>... params) {
+        Class<?> c = cls;
+        while (c != null) {
+            try {
+                return c.getDeclaredMethod(name, params);
+            } catch (NoSuchMethodException ignored) {
+                // 继续向父类找。
+            } catch (Throwable t) {
+                break;
+            }
+            c = c.getSuperclass();
+        }
+        warn(module, f.id + " skip: method not found "
+                + (cls == null ? "?" : cls.getName()) + "#" + name + " 未找到");
+        HookState.markNotFound(f, "方法未找到 " + name);
+        return null;
+    }
+
+    static boolean install(XposedModule module, Feature f, String label, @Nullable Method m,
+                           XposedInterface.Hooker hooker) {
+        return install(module, f, label, (java.lang.reflect.Executable) m, hooker,
+                XposedInterface.ExceptionMode.PROTECTIVE);
+    }
+
+    static boolean install(XposedModule module, Feature f, String label, @Nullable Method m,
+                           XposedInterface.Hooker hooker, XposedInterface.ExceptionMode mode) {
+        return install(module, f, label, (java.lang.reflect.Executable) m, hooker, mode);
+    }
+
+    /** 构造函数同样可以被 hook，libxposed 的 hook() 接受整个 Executable。 */
+    static boolean install(XposedModule module, Feature f, String label,
+                           @Nullable java.lang.reflect.Executable m,
+                           XposedInterface.Hooker hooker) {
+        return install(module, f, label, m, hooker, XposedInterface.ExceptionMode.PROTECTIVE);
+    }
+
+    /**
+     * 按指定异常模式安装。默认 PROTECTIVE；只有需要把异常传给宿主调用方
+     * （例如 EX-01 让 RxJava 走 onError）的 hook 才使用 PASSTHROUGH。
+     */
+    static boolean install(XposedModule module, Feature f, String label,
+                           @Nullable java.lang.reflect.Executable m,
+                           XposedInterface.Hooker hooker, XposedInterface.ExceptionMode mode) {
+        if (m == null) {
+            warn(module, f.id + " skip: no executable for " + label);
+            HookState.markNotFound(f, "挂载点为空 " + label);
+            return false;
+        }
+        try {
+            module.hook(m)
+                    .setId(f.id + "#" + label)
+                    .setExceptionMode(mode)
+                    .intercept(hooker);
+            HookState.installed(f, label);
+            info(module, f.id + " registered " + label);
+            return true;
+        } catch (Throwable t) {
+            error(module, f.id + " hook failed " + label, t);
+            HookState.markNotFound(f, "hook 失败 " + label);
+            return false;
+        }
+    }
+
+    static void hit(XposedModule module, Feature f, String detail) {
+        HookState.hit(f);
+        module.log(Log.INFO, TAG, f.id + " hit " + detail);
+    }
+
+    /** void 方法：不 proceed 即原方法体不执行。 */
+    static XposedInterface.Hooker skipVoid(XposedModule module, Feature f, String detail) {
+        return chain -> {
+            try {
+                hit(module, f, detail);
+                return null;
+            } catch (Throwable t) {
+                error(module, f.id + " intercept error " + detail, t);
+                return chain.proceed();
+            }
+        };
+    }
+
+    /** 任意返回值：直接给常量，不 proceed。 */
+    static XposedInterface.Hooker constValue(XposedModule module, Feature f, String detail,
+                                             Object value) {
+        return chain -> {
+            try {
+                hit(module, f, detail);
+                return value;
+            } catch (Throwable t) {
+                error(module, f.id + " intercept error " + detail, t);
+                return chain.proceed();
+            }
+        };
+    }
+
+    /**
+     * 链式 loadData()/build() 一类「返回 this」的方法：跳过原方法体但返回接收者，
+     * 避免调用方把 null 存进字段后在 clearData/onDestroy 上 NPE。
+     */
+    static XposedInterface.Hooker returnThis(XposedModule module, Feature f, String detail) {
+        return chain -> {
+            try {
+                hit(module, f, detail);
+                return chain.getThisObject();
+            } catch (Throwable t) {
+                error(module, f.id + " intercept error " + detail, t);
+                return chain.proceed();
+            }
+        };
+    }
+
+    /** 布尔方法：直接给常量，不 proceed。 */
+    static XposedInterface.Hooker constBool(XposedModule module, Feature f, String detail, boolean value) {
+        return chain -> {
+            try {
+                hit(module, f, detail);
+                return value ? Boolean.TRUE : Boolean.FALSE;
+            } catch (Throwable t) {
+                error(module, f.id + " intercept error " + detail, t);
+                return chain.proceed();
+            }
+        };
+    }
+}

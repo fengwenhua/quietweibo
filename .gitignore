@@ -1,0 +1,35 @@
+# 本地机器相关配置（含本机 SDK 路径），绝不可入共通仓库
+local.properties
+
+# Gradle / 构建产物
+.gradle/
+build/
+app/build/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# 签名密钥与本地签名配置（正式签名私钥只存在 GitHub release 环境 Secret）
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# 日志 / 崩溃
+*.log
+captures/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 本地临时目录 / 发布产物
+.local/
+dist/

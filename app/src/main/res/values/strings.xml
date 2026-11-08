@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">微博静净 (QuietWeibo)</string>
+    <string name="app_subtitle">v%1$s</string>
+    <string name="app_description">让微博安静下来：去掉开屏、信息流、搜索、悬浮等广告，不伪造会员状态。</string>
+    <string name="app_target_name">微博</string>
+
+    <!-- 状态卡 -->
+    <string name="status_title">模块状态</string>
+    <string name="status_connecting">正在连接框架…</string>
+    <string name="status_inactive">未激活</string>
+    <string name="status_connected">框架已连接</string>
+    <string name="status_active">已激活</string>
+    <string name="status_detail_connecting">目标 %1$s · 目标版本 %2$s · 绑定成功后自动刷新</string>
+    <string name="status_detail_no_scope">框架 API %1$d · 在 LSPosed 中启用模块并勾选%2$s · 目标版本 %3$s · v%4$s</string>
+    <string name="status_detail_not_running">框架 API %1$d · 启动%2$s后生效 · 目标版本 %3$s · v%4$s</string>
+    <string name="status_detail_active">框架 API %1$d · 已注入%2$s · 目标版本 %3$s · v%4$s</string>
+    <string name="status_unknown_version">未知</string>
+    <string name="status_remote_ok">remote prefs：可用，开关改动目标进程可读</string>
+    <string name="status_remote_fail">remote prefs：不可用，开关不可用</string>
+    <string name="status_banner_version">目标应用版本 %1$s 未适配（适配版本 %2$s）。功能可能失效。</string>
+    <string name="status_banner_failed">%1$d 项功能未生效。打开诊断页查看 skip 原因。</string>
+
+    <!-- 分组 -->
+    <string name="group_ad">广告净化</string>
+    <string name="group_ui">界面精简</string>
+    <string name="group_pv">隐私保护</string>
+    <string name="group_en">功能增强</string>
+    <string name="group_ex">实验功能</string>
+
+    <!-- 底栏 tab -->
+    <string name="tab_settings">设置</string>
+
+    <!-- 页面标题 -->
+    <string name="page_diagnostics">诊断</string>
+    <string name="page_about">关于</string>
+
+    <!-- 页脚 -->
+    <string name="footer_restart">修改后重启%1$s生效</string>
+    <string name="footer_compat">仅保证%1$s %2$s，其它版本尽力而为</string>
+
+    <!-- 诊断页 -->
+    <string name="diag_title">诊断</string>
+    <string name="diag_header">数据来自目标进程回传 · 刷新时间 %1$s</string>
+    <string name="diag_hint">registered=挂载成功，hit=命中次数，skip=跳过原因</string>
+    <string name="diag_empty_title">暂无诊断数据</string>
+    <string name="diag_empty">启动%1$s后重新进入本页</string>
+    <string name="diag_refresh">刷新</string>
+    <string name="diag_refresh_summary">重新读取目标进程回传数据</string>
+    <string name="diag_copy">复制诊断信息</string>
+    <string name="diag_copy_summary">复制全部功能的 registered/hit/skip</string>
+    <string name="diag_copied">诊断信息已复制</string>
+    <string name="diag_blocked">暂不支持：%1$s</string>
+    <string name="diag_registered">registered</string>
+    <string name="diag_hit">hit %1$d</string>
+    <string name="diag_skip">skip %1$s</string>
+    <string name="diag_no_data">—</string>
+
+    <!-- 广告净化 -->
+    <string name="f_ad_splash_title">开屏广告</string>
+    <string name="f_ad_splash_summary">冷启动不请求、不展示开机广告，直接进入主页</string>
+    <string name="f_ad_hot_splash_title">热启动开屏</string>
+    <string name="f_ad_hot_splash_summary">从后台回到前台不再触发开屏广告</string>
+    <string name="f_ad_feed_title">信息流广告</string>
+    <string name="f_ad_feed_summary">从首页、发现、关注、正文等流里移除广告微博与广告卡片</string>
+    <string name="f_ad_home_top_title">首页顶导广告</string>
+    <string name="f_ad_home_top_summary">首页顶部导航下的广告位不再加载</string>
+    <string name="f_ad_pull_pause_title">下拉悬停广告</string>
+    <string name="f_ad_pull_pause_summary">下拉刷新时不再插入首页/发现页悬停广告</string>
+    <string name="f_ad_overlay_title">大视窗/浮层/弹窗</string>
+    <string name="f_ad_overlay_summary">不插入大视窗、浮层与首页广告弹窗</string>
+    <string name="f_ad_discover_title">发现页广告</string>
+    <string name="f_ad_discover_summary">发现页广告流、浮层与广告弹窗不再展示</string>
+    <string name="f_ad_search_title">搜索与榜单广告</string>
+    <string name="f_ad_search_summary">搜索结果和榜单页不再插入广告</string>
+    <string name="f_ad_exit_title">退屏/切页广告</string>
+    <string name="f_ad_exit_summary">退出页面或切换页面时不再弹广告窗口</string>
+    <string name="f_ad_reorder_title">广告重排/插卡</string>
+    <string name="f_ad_reorder_summary">广告重排服务不再向信息流插入广告</string>
+    <string name="f_ad_float_title">视频悬浮广告</string>
+    <string name="f_ad_float_summary">不再显示视频/直播广告悬浮窗</string>
+    <string name="f_ad_shake_title">摇一摇/扭一扭</string>
+    <string name="f_ad_shake_summary">广告不再注册传感器，避免误触跳转</string>
+    <string name="f_ad_preload_title">广告预加载断源</string>
+    <string name="f_ad_preload_summary">不再后台拉取广告配置与素材，减少流量与请求</string>
+    <string name="f_ad_dynamic_title">动态广告兜底（跨版本）</string>
+    <string name="f_ad_dynamic_summary">扫描 DEX 中的广告服务/传感器，微博更新后自动补挂载点</string>
+
+    <!-- 关于页 -->
+    <string name="about_version">版本 %1$s（%2$d）</string>
+    <string name="about_target">目标应用</string>
+    <string name="about_target_value">%1$s（%2$s）· 适配 %3$s</string>
+    <string name="about_source_title">源码</string>
+    <string name="about_source_value">%1$s</string>
+    <string name="about_reference_title">参考项目</string>
+    <string name="about_reference_value">%1$s · %2$s</string>
+    <string name="about_disclaimer_title">免责声明</string>
+    <string name="about_disclaimer">本模块与%1$s官方无任何关联，仅供学习、研究和个人设备使用。使用可能违反目标应用的服务条款，风险由使用者自行承担。</string>
+    <string name="about_license_title">许可证</string>
+    <string name="about_license_summary">%1$s · 查看 LICENSE</string>
+
+    <string name="action_write_failed">写入失败：开关未保存。请确认框架已连接</string>
+    <string name="action_open_failed">无法打开链接，请检查浏览器</string>
+</resources>

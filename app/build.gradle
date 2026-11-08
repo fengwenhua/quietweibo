@@ -1,0 +1,91 @@
+plugins {
+    id 'com.android.application'
+}
+
+// 版本号集中放在 version.properties，CI 和本地共用；可用 -PqwVersionName/-PqwVersionCode 覆盖。
+def versionProps = new Properties()
+rootProject.file("version.properties").withInputStream { versionProps.load(it) }
+def qwVersionName = (findProperty("qwVersionName") ?: versionProps.getProperty("versionName")).toString()
+def qwVersionCode = (findProperty("qwVersionCode") ?: versionProps.getProperty("versionCode")).toInteger()
+
+android {
+    namespace 'com.quietweibo.app'
+    // The installed package is "platforms;android-37.2" (dir android-37.2), which AGP
+    // cannot resolve from the bare compileSdk 37 name. Renaming the install dir to
+    // android-37 is what satisfies AGP; documented in README.
+    compileSdk 37
+
+    defaultConfig {
+        // 仓库要求：io.github.[GitHub 用户名].[模块名]。
+        // Java 包名保持 com.quietweibo.app 不变。
+        applicationId "io.github.fengwenhua.quietweibo"
+        minSdk 29
+        targetSdk 36
+        versionCode qwVersionCode
+        versionName qwVersionName
+    }
+
+    testOptions {
+        // HookState/Report 等纯 JVM 测试会经过 android.util.Log；
+        // 让未 mock 的 Android 方法返回默认值，便于纯 JVM 单测。
+        unitTests.returnDefaultValues = true
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+        }
+        release {
+            // hook 集已稳定，开启 R8 收缩（Material 依赖会让 APK 涨到 10MB 级）。
+            // 入口类与回调的 keep 规则见 proguard-rules.pro。
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // 正式签名在受保护的 Actions sign job 里用 apksigner 完成；
+            // Gradle 只产出 unsigned APK，任何 CI 都不会接触生产私钥。
+        }
+    }
+
+
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig false
+    }
+}
+
+dependencies {
+    // Provided by the framework inside the hooked process; must never be packaged.
+    compileOnly 'io.github.libxposed:api:102.0.0'
+
+    // compileOnly 不拉传递依赖；@NonNull 来自下面的 appcompat/material 传递依赖，
+    // 不再单独声明 androidx.annotation，避免与它们的版本约束冲突。
+
+    // service must be PACKAGED, not compileOnly: the manifest declares
+    // io.github.libxposed.service.XposedProvider, and it is instantiated inside the
+    // module app's own process (compileOnly classes are absent at runtime).
+    // XposedProvider only forwards a binder and touches no hooked-process API.
+    implementation 'io.github.libxposed:service:102.0.0'
+
+    // UI 只在模块 App 进程用；hook 代码绝不引用这些类，所以不会影响宿主进程。
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.preference:preference:1.2.1'
+
+    testImplementation 'junit:junit:4.13.2'
+    // Config 的公开方法签名引用 XposedModule；主源码 compileOnly 在单测运行期不可见，
+    // 这里补同一坐标（不新增新库）。
+    testImplementation 'io.github.libxposed:api:102.0.0'
+}
+
+// 本机离线缓存里 material/preference 的传递依赖 recyclerview 1.1.0 缺失；
+// 统一提升到 1.4.0（向后兼容），有网环境同样适用。
+configurations.all {
+    resolutionStrategy {
+        force 'androidx.recyclerview:recyclerview:1.4.0'
+    }
+}

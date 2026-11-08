@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    主设置页：状态卡 -> 异常横幅 -> AD 分组 -> 页脚。
+    每个功能行的 android:key 必须与 Feature.key 完全一致；
+    标题/摘要由 SettingsFragment 从 Feature 注入，这里只声明 key 与分组图标。
+-->
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <Preference
+        android:key="status"
+        android:layout="@layout/preference_status_card"
+        android:selectable="false"
+        android:title="@string/status_title" />
+
+    <Preference
+        android:key="warning"
+        android:layout="@layout/preference_warning_banner"
+        android:selectable="false"
+        android:visible="false" />
+
+    <PreferenceCategory android:title="@string/group_ad">
+
+        <com.quietweibo.app.MaterialSwitchPreference
+            android:icon="@drawable/ic_group_ad"
+            android:key="ad_splash" />
+
+        <com.quietweibo.app.MaterialSwitchPreference
+            android:icon="@drawable/ic_group_ad"
+            android:key="ad_hot_splash" />
+
+        <com.quietweibo.app.MaterialSwitchPreference
+            android:icon="@drawable/ic_group_ad"
+            android:key="ad_feed" />
+
+        <com.quietweibo.app.MaterialSwitchPreference
+            android:icon="@drawable/ic_group_ad"
+            android:key="ad_home_top" />
+
+        <com.quietweibo.app.MaterialSwitchPreference
+            android:icon="@drawable/ic_group_ad"
+            android:key="ad_pull_pause" />
+
+        <com.quietweibo.app.MaterialSwitchPreference
+            android:icon="@drawable/ic_group_ad"
+            android:key="ad_overlay" />
+
+        <com.quietweibo.app.MaterialSwitchPreference
+            android:icon="@drawable/ic_group_ad"
+            android:key="ad_discover" />
+
+        <com.quietweibo.app.MaterialSwitchPreference
+            android:icon="@drawable/ic_group_ad"
+            android:key="ad_search" />
+
+        <com.quietweibo.app.MaterialSwitchPreference
+            android:icon="@drawable/ic_group_ad"
+            android:key="ad_exit" />
+
+        <com.quietweibo.app.MaterialSwitchPreference
+            android:icon="@drawable/ic_group_ad"
+            android:key="ad_reorder" />
+
+        <com.quietweibo.app.MaterialSwitchPreference
+            android:icon="@drawable/ic_group_ad"
+            android:key="ad_float" />
+
+        <com.quietweibo.app.MaterialSwitchPreference
+            android:icon="@drawable/ic_group_ad"
+            android:key="ad_shake" />
+
+        <com.quietweibo.app.MaterialSwitchPreference
+            android:icon="@drawable/ic_group_ad"
+            android:key="ad_preload" />
+
+        <com.quietweibo.app.MaterialSwitchPreference
+            android:icon="@drawable/ic_group_ad"
+            android:key="ad_dynamic" />
+
+    </PreferenceCategory>
+
+    <Preference
+        android:key="footer"
+        android:layout="@layout/preference_footer"
+        android:selectable="false" />
+
+</PreferenceScreen>

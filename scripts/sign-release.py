@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""Sign an unsigned APK in the protected Actions job, then sign its exact manifest bytes.
+
+The production private key exists only as a GitHub `release` environment Secret.
+Gradle in ordinary CI never sees it; this script runs in the protected sign job.
+"""
+import argparse
+import base64
+import hashlib
+import json
+import os
+import re
+import subprocess
+import tempfile
+from pathlib import Path
+
+PACKAGE = "io.github.fengwenhua.quietweibo"
+REPOSITORY = "fengwenhua/quietweibo"
+ALIAS = "quietweibo"
+
+
+def stamp():
+    return dict(
+        line.split("=", 1)
+        for line in Path("version.properties").read_text().splitlines()
+        if "=" in line and not line.lstrip().startswith("#")
+    )
+
+
+def checked(command, **kwargs):
+    result = subprocess.run(command, capture_output=True, check=False, **kwargs)
+    if result.returncode:
+        raise RuntimeError("Signing/verification failed: " + Path(command[0]).name)
+    return result.stdout.decode()
+
+
+def signer_digest(report):
+    # Build Tools 36 prints "Signer #1"; 37 prints "V3.0 Signer:".
+    lines = report.splitlines()
+    certificates = [
+        line.rsplit(": ", 1)[1]
+        for line in lines
+        if " certificate SHA-256 digest: " in line
+    ]
+    if (
+        "Number of signers: 1" not in lines
+        or len(certificates) != 1
+        or not re.fullmatch(r"[a-fA-F0-9]{64}", certificates[0])
+    ):
+        raise RuntimeError("Release APK signer report must contain exactly one valid certificate")
+    return certificates[0].lower()
+
+
+def verify_apk(tool, target, expected_cert):
+    """Check the real device range, then require both v2 and v3 to verify."""
+    for options, schemes in [((), (3,)), (("--min-sdk-version", "24"), (2, 3))]:
+        signed = checked(
+            [str(tool), "verify", "--verbose", "--print-certs", *options, str(target)]
+        )
+        for scheme in schemes:
+            if f"Verified using v{scheme} scheme (APK Signature Scheme v{scheme}): true" not in signed.splitlines():
+                raise RuntimeError(f"Release APK did not verify with signature scheme v{scheme}")
+        if signer_digest(signed) != expected_cert:
+            raise RuntimeError("Release APK signer does not match the pinned production certificate")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--apk", type=Path, required=True)
+    parser.add_argument("--build-tools", type=Path, required=True)
+    parser.add_argument("--out", type=Path, default=Path("dist"))
+    args = parser.parse_args()
+    if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("GITHUB_REPOSITORY") != REPOSITORY:
+        raise SystemExit("Formal signing is restricted to this repository's protected Actions job")
+    version = stamp()
+    tag = "v" + version["versionName"]
+    commit = checked(["git", "rev-parse", "HEAD"]).strip()
+    if checked(["git", "rev-parse", tag + "^{}"]).strip() != commit:
+        raise SystemExit("Signing checkout must equal the release tag")
+    trust = dict(
+        line.split("=", 1)
+        for line in Path("release-trust.properties").read_text().splitlines()
+        if "=" in line and not line.lstrip().startswith("#")
+    )
+    expected_cert = trust.get("certificateSha256", "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_cert):
+        raise SystemExit("release-trust.properties 未配置正式证书 pin，请先运行 bootstrap-signing")
+    name = "QuietWeibo-" + version["versionName"] + ".apk"
+    args.out.mkdir(parents=True, exist_ok=True)
+    target = args.out / name
+    tool = args.build_tools / "apksigner"
+    aapt = args.build_tools / "aapt2"
+    with tempfile.TemporaryDirectory(prefix="quietweibo-sign-", dir=os.environ["RUNNER_TEMP"]) as raw:
+        private = Path(raw)
+        key = private / "release.p12"
+        key.write_bytes(base64.b64decode(os.environ["RELEASE_KEYSTORE_BASE64"], validate=True))
+        key.chmod(0o600)
+        manifest_key = private / "manifest.pem"
+        manifest_key.write_text(os.environ["UPDATE_SIGNING_KEY_PEM"])
+        manifest_key.chmod(0o600)
+        checked(
+            [
+                str(tool), "sign", "--ks", str(key), "--ks-key-alias", ALIAS,
+                "--ks-pass", "env:RELEASE_STORE_PASSWORD",
+                "--key-pass", "env:RELEASE_STORE_PASSWORD",
+                "--v2-signing-enabled", "true", "--v3-signing-enabled", "true",
+                "--v4-signing-enabled", "false", "--out", str(target), str(args.apk),
+            ]
+        )
+        verify_apk(tool, target, expected_cert)
+        badging = checked([str(aapt), "dump", "badging", str(target)])
+        for value in [
+            "name='%s'" % PACKAGE,
+            "versionCode='%s'" % version["versionCode"],
+            "versionName='%s'" % version["versionName"],
+        ]:
+            if value not in badging:
+                raise RuntimeError("APK package/version mismatch")
+        if "application-debuggable" in badging:
+            raise RuntimeError("Release must not be debuggable")
+        digest = hashlib.sha256(target.read_bytes()).hexdigest()
+        (args.out / (name + ".sha256")).write_text(digest + "  " + name + "\n")
+        manifest = args.out / "release-manifest.json"
+        manifest.write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "packageName": PACKAGE,
+                    "versionName": version["versionName"],
+                    "versionCode": int(version["versionCode"]),
+                    "apkName": name,
+                    "apkSize": target.stat().st_size,
+                    "sha256": digest,
+                    "certificateSha256": expected_cert,
+                    "sourceCommit": commit,
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            ) + "\n"
+        )
+        signature = args.out / "release-manifest.sig"
+        checked(
+            [
+                "openssl", "dgst", "-sha256", "-sign", str(manifest_key),
+                "-out", str(signature), str(manifest),
+            ]
+        )
+        checked(
+            [
+                "openssl", "dgst", "-sha256", "-verify",
+                "app/src/main/assets/update-signing-public.pem",
+                "-signature", str(signature), str(manifest),
+            ]
+        )
+    print(json.dumps({"apk": name, "sha256": digest, "certificate": expected_cert, "sourceCommit": commit}))
+
+
+if __name__ == "__main__":
+    main()
