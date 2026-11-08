@@ -5,7 +5,7 @@
     python3 tools/check-anchors.py <dex 文件或目录> [...]
 
 输入为微博 base.apk 里的 classes*.dex，或 r0dump 还原出的应用 DEX
-（000030-000050 这 21 个；GMS/WebView 的 blob 会被自动跳过或 WARN）。
+（16.10.3 为 21 个，16.11.0 为 20 个；GMS/WebView 的 blob 会被自动跳过或 WARN）。
 
 输出 OK / MISS。必需锚点缺失时退出码 1；可选锚点（同广告位的第二种实现）缺失只提示。
 只依赖 Python 标准库，不读取、不执行目标 DEX 中的任何代码。

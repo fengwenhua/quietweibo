@@ -6,9 +6,12 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.PreferenceScreen;
+
+import java.util.List;
 
 /**
  * 关于页：模块版本、目标应用、免责声明、许可证。
@@ -36,6 +39,15 @@ public class AboutFragment extends PreferenceFragmentCompat {
                         TARGET_PACKAGE, VersionGate.SUPPORTED_VERSION));
         target.setSelectable(false);
         screen.addPreference(target);
+
+        Preference compat = info(R.string.about_compat_title,
+                getString(R.string.about_compat_summary,
+                        VersionGate.testedVersions().size()));
+        compat.setOnPreferenceClickListener(p -> {
+            showTestedVersions();
+            return true;
+        });
+        screen.addPreference(compat);
 
         Preference reference = info(R.string.about_reference_title,
                 getString(R.string.about_reference_value,
@@ -66,6 +78,23 @@ public class AboutFragment extends PreferenceFragmentCompat {
             return true;
         });
         screen.addPreference(license);
+    }
+
+    private void showTestedVersions() {
+        List<VersionGate.TestedVersion> versions = VersionGate.testedVersions();
+        String latest = VersionGate.latestTestedVersion();
+        String[] items = new String[versions.size()];
+        for (int i = 0; i < versions.size(); i++) {
+            VersionGate.TestedVersion version = versions.get(i);
+            items[i] = getString(R.string.about_compat_item, version.name,
+                    version.versionCode,
+                    latest.equals(version.name) ? getString(R.string.about_compat_latest) : "");
+        }
+        new AlertDialog.Builder(requireContext())
+                .setTitle(R.string.about_compat_dialog_title)
+                .setItems(items, null)
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
     }
 
     private Preference info(int titleRes, CharSequence summary) {

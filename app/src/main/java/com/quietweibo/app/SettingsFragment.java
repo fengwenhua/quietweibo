@@ -188,6 +188,7 @@ public class SettingsFragment extends PreferenceFragmentCompat {
                 status.setTitle(R.string.status_connecting);
                 status.setSummary(getString(R.string.status_detail_connecting,
                         getString(R.string.app_target_name), shownTargetVersion()));
+                appendCompatState(status, shownTargetVersion());
                 appendRemoteState(status, writable);
             } else {
                 loadStatusAsync(service, writable);
@@ -263,6 +264,7 @@ public class SettingsFragment extends PreferenceFragmentCompat {
                     p.setSummary(getString(R.string.status_detail_not_running,
                             finalApi, appName, targetVersion, version));
                 }
+                appendCompatState(p, targetVersion);
                 appendRemoteState(p, remoteWritable);
                 updateBanner();
             });
@@ -280,10 +282,10 @@ public class SettingsFragment extends PreferenceFragmentCompat {
             banner.setVisible(false);
             return;
         }
-        if (!VersionGate.isSupported(target)) {
+        if (!VersionGate.isTested(target)) {
             mBannerSeq++;
-            banner.setSummary(getString(R.string.status_banner_version, target,
-                    VersionGate.SUPPORTED_VERSION));
+            banner.setSummary(getString(R.string.status_banner_untested, target,
+                    VersionGate.latestTestedVersion()));
             banner.setVisible(true);
             return;
         }
@@ -325,6 +327,14 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         } else {
             banner.setVisible(false);
         }
+    }
+
+    private void appendCompatState(Preference status, String targetVersion) {
+        String latest = VersionGate.latestTestedVersion();
+        boolean tested = VersionGate.isTested(targetVersion);
+        status.setSummary(status.getSummary() + "\n"
+                + getString(tested ? R.string.status_compat_ok
+                        : R.string.status_compat_untested, latest));
     }
 
     private void appendRemoteState(Preference status, boolean writable) {

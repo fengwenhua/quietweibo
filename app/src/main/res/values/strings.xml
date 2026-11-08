@@ -18,7 +18,10 @@
     <string name="status_unknown_version">未知</string>
     <string name="status_remote_ok">remote prefs：可用，开关改动目标进程可读</string>
     <string name="status_remote_fail">remote prefs：不可用，开关不可用</string>
+    <string name="status_compat_ok">兼容性：已测试（最新兼容 %1$s）</string>
+    <string name="status_compat_untested">兼容性：未测试（最新兼容 %1$s），按尽力兼容运行</string>
     <string name="status_banner_version">目标应用版本 %1$s 未适配（适配版本 %2$s）。功能可能失效。</string>
+    <string name="status_banner_untested">当前微博 %1$s 不在已测试兼容列表（最新兼容 %2$s）。功能可能失效，请关注诊断页并反馈。</string>
     <string name="status_banner_failed">%1$d 项功能未生效。打开诊断页查看 skip 原因。</string>
 
     <!-- 分组 -->
@@ -90,6 +93,11 @@
     <string name="about_version">版本 %1$s（%2$d）</string>
     <string name="about_target">目标应用</string>
     <string name="about_target_value">%1$s（%2$s）· 适配 %3$s</string>
+    <string name="about_compat_title">兼容版本</string>
+    <string name="about_compat_summary">已测试 %1$d 个微博版本，点击查看</string>
+    <string name="about_compat_dialog_title">已测试兼容的微博版本</string>
+    <string name="about_compat_item">%1$s（versionCode %2$d）%3$s</string>
+    <string name="about_compat_latest"> · 最新</string>
     <string name="about_source_title">源码</string>
     <string name="about_source_value">%1$s</string>
     <string name="about_reference_title">参考项目</string>
