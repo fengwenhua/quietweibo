@@ -291,6 +291,14 @@ final class FeedAdHooks {
         private static volatile Field sHeartbeatItems;
         private static volatile Field sHeartbeatAdVideo;
         private static volatile Field sHeartbeatAdLogoText;
+        private static volatile Field sHeartbeatAdOverlayer;
+        /** CardDiscoverHotSearchUnfoldInfo：发现页四列热搜的 channel/group 广告词。 */
+        private static volatile Class<?> sUnfoldClass;
+        private static volatile Method sUnfoldGetChannels;
+        private static volatile Class<?> sUnfoldChannelClass;
+        private static volatile Method sUnfoldGetGroups;
+        private static volatile Method sUnfoldGetPromotion;
+        private static volatile Method sUnfoldGetTitleSub;
 
         private static final Set<String> AD_METHOD_NAMES = new HashSet<>(Arrays.asList(
                 "isAd", "getAdTag", "getAdType", "getAdScene", "getAdPromotion",
@@ -313,6 +321,8 @@ final class FeedAdHooks {
                 "com.sina.weibo.card.model.CardHotSearchInfo";
         private static final String CARD_HEARTBEAT =
                 "com.sina.weibo.card.model.CardHeartBeatInfo";
+        private static final String CARD_UNFOLD_HOT_SEARCH =
+                "com.sina.weibo.card.model.CardDiscoverHotSearchUnfoldInfo";
 
         private final Class<?> statusClass;
         private final Class<?> pageCardClass;
@@ -645,13 +655,39 @@ final class FeedAdHooks {
                         false, cl);
                 Field adVideo = frame.getField("ad_video");
                 Field adLogoText = frame.getField("ad_logo_text");
-                for (Field field : new Field[]{items, adVideo, adLogoText}) {
-                    field.setAccessible(true);
+                Field adOverlayer = null;
+                try {
+                    adOverlayer = frame.getField("media_ad_overlayer");
+                } catch (Throwable ignored) {
+                }
+                for (Field field : new Field[]{items, adVideo, adLogoText, adOverlayer}) {
+                    if (field != null) {
+                        field.setAccessible(true);
+                    }
                 }
                 sHeartbeatClass = heartbeat;
                 sHeartbeatItems = items;
                 sHeartbeatAdVideo = adVideo;
                 sHeartbeatAdLogoText = adLogoText;
+                sHeartbeatAdOverlayer = adOverlayer;
+            } catch (Throwable ignored) {
+            }
+
+            // 发现页四列热搜：CardDiscoverHotSearchUnfoldInfo.channelList[].groupList[]。
+            try {
+                Class<?> unfold = Class.forName(CARD_UNFOLD_HOT_SEARCH, false, cl);
+                Method getChannels = method(unfold, "getChannelList");
+                Class<?> channel = Class.forName(CARD_UNFOLD_HOT_SEARCH + "$Channel", false, cl);
+                Method getGroups = method(channel, "getGroupList");
+                Class<?> group = Class.forName(CARD_UNFOLD_HOT_SEARCH + "$Group", false, cl);
+                Method groupGetPromotion = method(group, "getPromotion");
+                Method getTitleSub = method(group, "getTitleSub");
+                sUnfoldClass = unfold;
+                sUnfoldGetChannels = getChannels;
+                sUnfoldChannelClass = channel;
+                sUnfoldGetGroups = getGroups;
+                sUnfoldGetPromotion = groupGetPromotion;
+                sUnfoldGetTitleSub = getTitleSub;
             } catch (Throwable ignored) {
             }
 
@@ -1022,10 +1058,78 @@ final class FeedAdHooks {
                                 if (sHeartbeatAdVideo.get(frame) != null) {
                                     return true;
                                 }
+                                if (sHeartbeatAdOverlayer != null
+                                        && sHeartbeatAdOverlayer.get(frame) != null) {
+                                    return true;
+                                }
                                 Object logo = sHeartbeatAdLogoText.get(frame);
                                 if (logo instanceof String && !((String) logo).isEmpty()) {
                                     return true;
                                 }
+                            }
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                    return false;
+                }
+                if (sUnfoldClass != null && sUnfoldClass.isInstance(item)) {
+                    try {
+                        Object rawChannels = sUnfoldGetChannels.invoke(item);
+                        if (rawChannels instanceof List) {
+                            List<?> channels = (List<?>) rawChannels;
+                            boolean changed = false;
+                            for (int c = channels.size() - 1; c >= 0; c--) {
+                                Object channel = channels.get(c);
+                                if (channel == null || (sUnfoldChannelClass != null
+                                        && !sUnfoldChannelClass.isInstance(channel))) {
+                                    continue;
+                                }
+                                Object rawGroups = sUnfoldGetGroups.invoke(channel);
+                                if (!(rawGroups instanceof List)) {
+                                    continue;
+                                }
+                                List<?> groups = (List<?>) rawGroups;
+                                boolean removed = false;
+                                for (int i = groups.size() - 1; i >= 0; i--) {
+                                    Object group = groups.get(i);
+                                    if (group == null) {
+                                        continue;
+                                    }
+                                    boolean ad = false;
+                                    Object promo = sUnfoldGetPromotion.invoke(group);
+                                    if (promo != null) {
+                                        boolean invalid = false;
+                                        if (promotionIsInvalid != null) {
+                                            try {
+                                                invalid = Boolean.TRUE.equals(
+                                                        promotionIsInvalid.invoke(promo));
+                                            } catch (Throwable ignored) {
+                                            }
+                                        }
+                                        if (!invalid) {
+                                            ad = true;
+                                        }
+                                    }
+                                    if (!ad && sUnfoldGetTitleSub != null) {
+                                        Object sub = sUnfoldGetTitleSub.invoke(group);
+                                        if (sub instanceof String && isAdTag((String) sub)) {
+                                            ad = true;
+                                        }
+                                    }
+                                    if (ad) {
+                                        groups.remove(i);
+                                        removed = true;
+                                    }
+                                }
+                                if (removed) {
+                                    changed = true;
+                                    if (groups.isEmpty()) {
+                                        channels.remove(c);
+                                    }
+                                }
+                            }
+                            if (changed && channels.isEmpty()) {
+                                return true;
                             }
                         }
                     } catch (Throwable ignored) {

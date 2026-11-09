@@ -47,6 +47,14 @@ final class AdapterHooks {
                         Method getData = vm.getClass().getMethod("getData");
                         getData.setAccessible(true);
                         Object data = getData.invoke(vm);
+                        if (data != null) {
+                            String name = data.getClass().getName();
+                            if (name.contains("Card") || name.contains("Ad")
+                                    || name.contains("Hot") || name.contains("Search")
+                                    || name.contains("Discover") || name.contains("Message")) {
+                                HookKit.info(module, "adapter data " + name);
+                            }
+                        }
                         if (data != null && filter.isAd(data)) {
                             HookKit.hit(module, f, "adapter ad vm skipped "
                                     + data.getClass().getName());
