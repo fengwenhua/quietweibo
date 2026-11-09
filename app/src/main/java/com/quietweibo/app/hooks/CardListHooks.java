@@ -32,6 +32,8 @@ final class CardListHooks {
     private static final String CARD_LIST = "com.sina.weibo.models.CardList";
     private static final String CARD_SEARCH = "com.sina.weibo.card.model.CardSearch";
     private static final String HOTWORD = "com.sina.weibo.models.SearchHotword";
+    private static final String DISCOVER_SEARCH =
+            "com.sina.weibo.page.discoverv2.DiscoverSearchServiceV2";
 
     /** 带 {@code getHotwordList()} 的载体类；更新后若改名，只需在这里补候选。 */
     private static final String[] HOTWORD_HOLDERS = {CARD_LIST, CARD_SEARCH};
@@ -65,9 +67,13 @@ final class CardListHooks {
                     any |= installHotwordFilter(module, f, cl, cls);
                 }
             }
+            Class<?> discoverSearch = HookKit.findClassOptional(module, f, cl, DISCOVER_SEARCH);
+            if (discoverSearch != null) {
+                any |= installDiscoverHotwordFilters(module, f, cl, discoverSearch);
+            }
             if (any) {
                 sInstalled.set(true);
-                HookState.note(f, "卡片列表：CardList/CardSearch 卡片与热搜推广词过滤");
+                HookState.note(f, "卡片列表：CardList/CardSearch/发现页热搜推广词过滤");
             }
         }
     }
@@ -143,6 +149,64 @@ final class CardListHooks {
                 return result;
             }
         });
+    }
+
+    /**
+     * 发现页热搜列表不走 CardList/CardSearch，而是由 DiscoverSearchServiceV2
+     * 直接接收 {@code List<SearchHotword>}。在它更新 UI 前原地过滤。
+     */
+    private static boolean installDiscoverHotwordFilters(XposedModule module, Feature f,
+                                                         ClassLoader cl, Class<?> service) {
+        Class<?> hotword;
+        Method getPromotion;
+        Method getNote;
+        Method getNoteTag;
+        Method getTagText;
+        try {
+            hotword = Class.forName(HOTWORD, false, cl);
+            getPromotion = hotword.getMethod("getPromotion");
+            getPromotion.setAccessible(true);
+            getNote = methodOrNull(hotword, "getNote");
+            getNoteTag = methodOrNull(hotword, "getNoteTag");
+            getTagText = getNoteTag == null ? null
+                    : methodOrNull(getNoteTag.getReturnType(), "getText");
+        } catch (Throwable t) {
+            HookKit.warn(module, f.id + " skip: DiscoverSearchHotword markers unavailable");
+            return false;
+        }
+        boolean any = false;
+        for (String name : new String[]{"a", "b", "c"}) {
+            Method method = HookKit.findMethodQuiet(service, name, List.class);
+            if (method == null) {
+                continue;
+            }
+            String label = "DiscoverSearch#" + name + "(List)";
+            any |= HookKit.install(module, f, label, method, chain -> {
+                try {
+                    Object arg = chain.getArg(0);
+                    if (arg instanceof List) {
+                        List<?> list = (List<?>) arg;
+                        int removed = 0;
+                        for (int i = list.size() - 1; i >= 0; i--) {
+                            Object item = list.get(i);
+                            if (item != null && hotword.isInstance(item)
+                                    && isPromotedHotword(item, getPromotion, getNote,
+                                    getNoteTag, getTagText)) {
+                                list.remove(i);
+                                removed++;
+                            }
+                        }
+                        if (removed > 0) {
+                            HookKit.hit(module, f, label + " removed=" + removed);
+                        }
+                    }
+                } catch (Throwable t) {
+                    HookKit.error(module, f.id + " discover hotword filter failed", t);
+                }
+                return chain.proceed();
+            });
+        }
+        return any;
     }
 
     /** 推广标记：promotion 非空，或 note/note_tag 打了“商/广告/推广/赞助”标签。 */

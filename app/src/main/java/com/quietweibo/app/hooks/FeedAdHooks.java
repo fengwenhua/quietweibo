@@ -8,7 +8,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -265,6 +267,20 @@ final class FeedAdHooks {
         private static final Map<Class<?>, List<Method>> AD_METHOD_CACHE =
                 new ConcurrentHashMap<>();
 
+        /**
+         * 卡片组/拼图卡可能互相嵌套，甚至形成环。限制递归深度并按对象身份去重，
+         * 避免正文页/图片页遇到异常卡片结构时 StackOverflow 导致宿主进程重启。
+         */
+        private static final int MAX_RECURSION = 32;
+        private static final ThreadLocal<Set<Object>> VISITING =
+                ThreadLocal.withInitial(() -> Collections.newSetFromMap(new IdentityHashMap<>()));
+        private static final ThreadLocal<Integer> DEPTH = ThreadLocal.withInitial(() -> 0);
+
+        /** CardCarousel：发现页热搜下方的 ViewPager 广告横幅。 */
+        private static volatile Class<?> sCarouselClass;
+        private static volatile Method sCarouselGetItems;
+        private static volatile Method sCarouselItemGetSubCards;
+
         private static final Set<String> AD_METHOD_NAMES = new HashSet<>(Arrays.asList(
                 "isAd", "getAdTag", "getAdType", "getAdScene", "getAdPromotion",
                 "getAdVideoInfo", "getAdCornerMarkData", "getAdObject", "getAdInfo"
@@ -281,6 +297,7 @@ final class FeedAdHooks {
         private static final String CARD_SPLICE = "com.sina.weibo.card.model.CardSpliceMultiple";
         private static final String CARD_SPLICE_ITEM =
                 "com.sina.weibo.card.model.CardSpliceMultipleItem";
+        private static final String CARD_CAROUSEL = "com.sina.weibo.card.model.CardCarousel";
 
         private final Class<?> statusClass;
         private final Class<?> pageCardClass;
@@ -576,6 +593,19 @@ final class FeedAdHooks {
                 }
             }
 
+            // 发现页热搜下方的轮播横幅：CardCarousel -> CarouselItem -> subCards。
+            try {
+                Class<?> carousel = Class.forName(CARD_CAROUSEL, false, cl);
+                Method carouselItems = method(carousel, "getCarouselItems");
+                Class<?> carouselItem = Class.forName(CARD_CAROUSEL + "$CarouselItem", false, cl);
+                Method subCards = method(carouselItem, "getSubCards");
+                sCarouselClass = carousel;
+                sCarouselGetItems = carouselItems;
+                sCarouselItemGetSubCards = subCards;
+            } catch (Throwable ignored) {
+                // 版本不同/类名变化时不影响其它卡片过滤。
+            }
+
             return new AdFilter(status, pageCard, isAd, getPromotion, promotionIsInvalid,
                     getAdObject, fromTopVision, itemsField, cardIsAd,
                     trend, trendGetData, trendAdType, trendGetExpose,
@@ -702,7 +732,17 @@ final class FeedAdHooks {
             if (item == null) {
                 return false;
             }
+            int depth = DEPTH.get();
+            if (depth >= MAX_RECURSION) {
+                return false;
+            }
+            Set<Object> visiting = VISITING.get();
+            if (!visiting.add(item)) {
+                return false;
+            }
+            DEPTH.set(depth + 1);
             try {
+                try {
                 if (AD_CARD_CLASSES.contains(item.getClass().getName())) {
                     return true;
                 }
@@ -876,6 +916,31 @@ final class FeedAdHooks {
                     }
                     return false;
                 }
+                if (sCarouselClass != null && sCarouselClass.isInstance(item)) {
+                    if (sCarouselGetItems != null && sCarouselItemGetSubCards != null) {
+                        try {
+                            Object raw = sCarouselGetItems.invoke(item);
+                            if (raw instanceof List) {
+                                for (Object carouselItem : (List<?>) raw) {
+                                    if (carouselItem == null) {
+                                        continue;
+                                    }
+                                    Object subCards = sCarouselItemGetSubCards.invoke(carouselItem);
+                                    if (!(subCards instanceof List)) {
+                                        continue;
+                                    }
+                                    for (Object subCard : (List<?>) subCards) {
+                                        if (subCard != null && isAd(subCard)) {
+                                            return true;
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                    return false;
+                }
                 if (statusClass != null && statusClass.isInstance(item)) {
                     return isAdStatus(item);
                 }
@@ -886,6 +951,10 @@ final class FeedAdHooks {
                 // 任一标记读取失败按“非广告”处理，避免误删正常内容。
             }
             return false;
+            } finally {
+                DEPTH.set(depth);
+                visiting.remove(item);
+            }
         }
 
         private List<?> gridItems(Method getter, Object grid) {

@@ -108,8 +108,9 @@ final class ServiceHooks {
         // 发现页搜索广告
         disableLifecycle(module, f, cl,
                 "com.sina.weibo.page.searchv2.container.service.advertise.DiscoverAdService", false);
-        // 发现页弹窗广告（DiscoverAdDialogV2）：skip 展示入口。
+        // 发现页弹窗广告（DiscoverAdDialogV2）：skip 所有展示入口。
         disableShow(module, f, cl, "com.sina.weibo.biz.discover.d", "show", false);
+        disableShow(module, f, cl, "com.sina.weibo.biz.discover.d", "showAd", false);
     }
 
     static void installSearch(XposedModule module, ClassLoader cl) {
