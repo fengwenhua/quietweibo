@@ -99,6 +99,9 @@ final class ServiceHooks {
                 "checkAndShowAdAsync", 1, false);
         // 图片型广告 Alert（CardListFragment 使用）
         disableMethod(module, f, cl, "com.sina.weibo.page.ad.c", "a", 1, false);
+        // HomeAdDialog / HomeDialogManager：带倒计时关闭按钮的广告弹窗，发现页也会触发。
+        disableShow(module, f, cl, "com.sina.weibo.business.ab", "show", false);
+        disableMethod(module, f, cl, "com.sina.weibo.business.ac", "a", 5, false);
     }
 
     static void installDiscover(XposedModule module, ClassLoader cl) {

@@ -1,5 +1,17 @@
 # 更新日志
 
+## 0.1.4 - 2026-11-10
+
+继续修复发现页广告。
+
+- 微博热搜卡片改为按条目过滤：识别 `CardHotSearchInfo.items` 中
+  `hot_text` 为“商/广告/推广/赞助”或 `status` 为广告的条目，只移除广告词。
+- 发现页视频/图片轮播卡：识别 `CardHeartBeatInfo.items[].ad_video` /
+  `ad_logo_text`，命中时移除整个轮播。
+- 补充 `HomeAdDialog`/`HomeDialogManager` 倒计时弹窗入口，覆盖发现页倒计时广告。
+- 保留 0.1.3 的 `CardCarousel`、`DiscoverSearchServiceV2` 和递归防护。
+- 82 个 JVM 单测通过。
+
 ## 0.1.3 - 2026-11-10
 
 修复发现页广告并加固详情页/图片浏览的稳定性。

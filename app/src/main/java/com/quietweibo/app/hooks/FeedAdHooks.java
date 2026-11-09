@@ -280,6 +280,17 @@ final class FeedAdHooks {
         private static volatile Class<?> sCarouselClass;
         private static volatile Method sCarouselGetItems;
         private static volatile Method sCarouselItemGetSubCards;
+        /** CardHotSearchInfo：微博热搜卡片，items 里带“商”的条目需要单独移除。 */
+        private static volatile Class<?> sHotSearchClass;
+        private static volatile Method sHotSearchGetItems;
+        private static volatile Class<?> sHotSearchItemClass;
+        private static volatile Method sHotSearchGetHotText;
+        private static volatile Method sHotSearchGetStatus;
+        /** CardHeartBeatInfo：发现页视频/图片轮播卡，子项 ad_video 非空即广告。 */
+        private static volatile Class<?> sHeartbeatClass;
+        private static volatile Field sHeartbeatItems;
+        private static volatile Field sHeartbeatAdVideo;
+        private static volatile Field sHeartbeatAdLogoText;
 
         private static final Set<String> AD_METHOD_NAMES = new HashSet<>(Arrays.asList(
                 "isAd", "getAdTag", "getAdType", "getAdScene", "getAdPromotion",
@@ -298,6 +309,10 @@ final class FeedAdHooks {
         private static final String CARD_SPLICE_ITEM =
                 "com.sina.weibo.card.model.CardSpliceMultipleItem";
         private static final String CARD_CAROUSEL = "com.sina.weibo.card.model.CardCarousel";
+        private static final String CARD_HOT_SEARCH =
+                "com.sina.weibo.card.model.CardHotSearchInfo";
+        private static final String CARD_HEARTBEAT =
+                "com.sina.weibo.card.model.CardHeartBeatInfo";
 
         private final Class<?> statusClass;
         private final Class<?> pageCardClass;
@@ -606,6 +621,40 @@ final class FeedAdHooks {
                 // 版本不同/类名变化时不影响其它卡片过滤。
             }
 
+            // 微博热搜卡片：CardHotSearchInfo.items 内的“商”词。
+            try {
+                Class<?> hotSearch = Class.forName(CARD_HOT_SEARCH, false, cl);
+                Method getItems = method(hotSearch, "getItems");
+                Class<?> hotSearchItem = Class.forName(CARD_HOT_SEARCH + "$CardHotSearchItemInfo",
+                        false, cl);
+                Method getHotText = method(hotSearchItem, "getHotText");
+                Method getStatus = methodOrNull(hotSearchItem, "getStatus");
+                sHotSearchClass = hotSearch;
+                sHotSearchGetItems = getItems;
+                sHotSearchItemClass = hotSearchItem;
+                sHotSearchGetHotText = getHotText;
+                sHotSearchGetStatus = getStatus;
+            } catch (Throwable ignored) {
+            }
+
+            // 发现页视频/图片轮播卡：CardHeartBeatInfo.items[].ad_video / ad_logo_text。
+            try {
+                Class<?> heartbeat = Class.forName(CARD_HEARTBEAT, false, cl);
+                Field items = heartbeat.getField("items");
+                Class<?> frame = Class.forName(CARD_HEARTBEAT + "$CardHeartBeatFrameItemInfo",
+                        false, cl);
+                Field adVideo = frame.getField("ad_video");
+                Field adLogoText = frame.getField("ad_logo_text");
+                for (Field field : new Field[]{items, adVideo, adLogoText}) {
+                    field.setAccessible(true);
+                }
+                sHeartbeatClass = heartbeat;
+                sHeartbeatItems = items;
+                sHeartbeatAdVideo = adVideo;
+                sHeartbeatAdLogoText = adLogoText;
+            } catch (Throwable ignored) {
+            }
+
             return new AdFilter(status, pageCard, isAd, getPromotion, promotionIsInvalid,
                     getAdObject, fromTopVision, itemsField, cardIsAd,
                     trend, trendGetData, trendAdType, trendGetExpose,
@@ -623,6 +672,14 @@ final class FeedAdHooks {
             Method m = cls.getMethod(name);
             m.setAccessible(true);
             return m;
+        }
+
+        private static Method methodOrNull(Class<?> cls, String name) {
+            try {
+                return method(cls, name);
+            } catch (Throwable t) {
+                return null;
+            }
         }
 
         /**
@@ -913,6 +970,65 @@ final class FeedAdHooks {
                             }
                             return children.isEmpty();
                         }
+                    }
+                    return false;
+                }
+                if (sHotSearchClass != null && sHotSearchClass.isInstance(item)) {
+                    try {
+                        Object raw = sHotSearchGetItems.invoke(item);
+                        if (raw instanceof List) {
+                            List<?> entries = (List<?>) raw;
+                            boolean removed = false;
+                            for (int i = entries.size() - 1; i >= 0; i--) {
+                                Object entry = entries.get(i);
+                                if (entry == null || (sHotSearchItemClass != null
+                                        && !sHotSearchItemClass.isInstance(entry))) {
+                                    continue;
+                                }
+                                boolean ad = false;
+                                if (sHotSearchGetHotText != null) {
+                                    Object text = sHotSearchGetHotText.invoke(entry);
+                                    if (text instanceof String && isAdTag((String) text)) {
+                                        ad = true;
+                                    }
+                                }
+                                if (!ad && sHotSearchGetStatus != null) {
+                                    Object status = sHotSearchGetStatus.invoke(entry);
+                                    if (status != null && isAdStatus(status)) {
+                                        ad = true;
+                                    }
+                                }
+                                if (ad) {
+                                    entries.remove(i);
+                                    removed = true;
+                                }
+                            }
+                            if (removed) {
+                                return entries.isEmpty();
+                            }
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                    return false;
+                }
+                if (sHeartbeatClass != null && sHeartbeatClass.isInstance(item)) {
+                    try {
+                        Object raw = sHeartbeatItems.get(item);
+                        if (raw instanceof List) {
+                            for (Object frame : (List<?>) raw) {
+                                if (frame == null) {
+                                    continue;
+                                }
+                                if (sHeartbeatAdVideo.get(frame) != null) {
+                                    return true;
+                                }
+                                Object logo = sHeartbeatAdLogoText.get(frame);
+                                if (logo instanceof String && !((String) logo).isEmpty()) {
+                                    return true;
+                                }
+                            }
+                        }
+                    } catch (Throwable ignored) {
                     }
                     return false;
                 }
