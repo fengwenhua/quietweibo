@@ -1,6 +1,7 @@
 package com.quietweibo.app.hooks;
 
 import android.view.View;
+import android.view.ViewGroup;
 
 import com.quietweibo.app.Feature;
 import com.quietweibo.app.HookState;
@@ -101,7 +102,17 @@ final class AdapterHooks {
                 try {
                     Object self = chain.getThisObject();
                     if (self instanceof View) {
-                        ((View) self).setVisibility(View.GONE);
+                        View view = (View) self;
+                        view.setVisibility(View.GONE);
+                        view.setMinimumHeight(0);
+                        ViewGroup.LayoutParams params = view.getLayoutParams();
+                        if (params != null) {
+                            params.height = 0;
+                            view.setLayoutParams(params);
+                        }
+                        if (view.getParent() instanceof View) {
+                            ((View) view.getParent()).requestLayout();
+                        }
                     }
                     HookKit.hit(module, f, "ad card hidden "
                             + chain.getArg(0).getClass().getName());

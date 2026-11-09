@@ -47,6 +47,7 @@ public final class Hooks {
                     CardListHooks.install(module, f, cl);
                     DetailFlowHooks.install(module, f, cl);
                     AdapterHooks.install(module, f, cl);
+                    MessageAdHooks.install(module, f, cl);
                 });
         map.put(Feature.HOME_TOP_AD,
                 (module, cl, config, f) -> ServiceHooks.installHomeTop(module, cl));
