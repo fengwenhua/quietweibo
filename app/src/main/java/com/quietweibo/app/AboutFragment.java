@@ -7,6 +7,7 @@ import android.os.Bundle;
 import android.widget.Toast;
 
 import androidx.preference.Preference;
+import androidx.preference.PreferenceCategory;
 import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.PreferenceScreen;
 
@@ -25,6 +26,7 @@ public class AboutFragment extends PreferenceFragmentCompat {
     private static final String REFERENCE_URL = "https://github.com/yigenhuobah/quietbox";
     private static final String LICENSE_URL =
             "https://github.com/fengwenhua/quietweibo/blob/main/LICENSE";
+    private static final String KEY_HIDE_ICON = "about_hide_icon";
 
     private PreferenceScreen mMainScreen;
     private boolean mShowingVersions;
@@ -84,6 +86,44 @@ public class AboutFragment extends PreferenceFragmentCompat {
             return true;
         });
         screen.addPreference(license);
+
+        PreferenceCategory iconCategory = new PreferenceCategory(requireContext());
+        iconCategory.setTitle(R.string.about_icon_title);
+        screen.addPreference(iconCategory);
+
+        MaterialSwitchPreference hideIcon = new MaterialSwitchPreference(requireContext());
+        hideIcon.setKey(KEY_HIDE_ICON);
+        hideIcon.setTitle(R.string.about_hide_icon_title);
+        hideIcon.setSummary(R.string.about_hide_icon_summary);
+        hideIcon.setIcon(R.drawable.ic_tab_settings);
+        hideIcon.setCheckedValue(LauncherIcon.isHidden(requireContext()));
+        hideIcon.setOnPreferenceChangeListener((pref, value) -> {
+            if (!(value instanceof Boolean)) {
+                return false;
+            }
+            boolean hide = (Boolean) value;
+            if (!LauncherIcon.setHidden(requireContext(), hide)) {
+                Toast.makeText(requireContext(), R.string.about_hide_icon_failed,
+                        Toast.LENGTH_LONG).show();
+                return false;
+            }
+            Toast.makeText(requireContext(),
+                    hide ? R.string.about_hide_icon_toast_hidden
+                            : R.string.about_hide_icon_toast_shown,
+                    Toast.LENGTH_SHORT).show();
+            return true;
+        });
+        screen.addPreference(hideIcon);
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        Preference p = findPreference(KEY_HIDE_ICON);
+        if (p instanceof MaterialSwitchPreference) {
+            ((MaterialSwitchPreference) p)
+                    .setCheckedValue(LauncherIcon.isHidden(requireContext()));
+        }
     }
 
     private void showTestedVersions() {
